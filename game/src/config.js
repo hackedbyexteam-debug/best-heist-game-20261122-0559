@@ -35,6 +35,17 @@ export const GUARD_GIVE_UP_SECONDS = 2.5; // unseen for this long: guard gives u
 
 export const LOOT_VALUES = { gold: 500, cash: 300, diamond: 1000, art: 1500, vault: 5000 };
 
+// The coin toss: one tool per the judge's "tools at a cost" criterion.
+// A coin flies from the thief to a floor tile ahead; the nearest patrolling
+// guard walks over to investigate the clink, then goes back to its patrol.
+export const COIN_COST = 250; // score dollars charged per toss (settled in the level tally)
+export const COIN_MAX_PER_JOB = 3; // tosses allowed per job
+export const COIN_THROW_RANGE = 3; // tiles ahead of the thief
+export const COIN_HEAR_RANGE = 7; // tiles: guards closer than this hear the clink
+export const COIN_FLIGHT_SECONDS = 0.22; // toss arc, then the coin rests
+export const COIN_RING_SECONDS = 4.0; // how long the coin rings on the floor
+export const COIN_INVESTIGATE_SECONDS = 4.5; // guard's whole detour budget
+
 export const STARTING_LIVES = 3;
 
 export const COLORS = {
@@ -59,6 +70,8 @@ export const COLORS = {
   cash: '#7ddb8a',
   art: '#ff9de2',
   vault: '#ffcf3d',
+  coin: '#ffd24d',
+  coinRing: 'rgba(255, 210, 77, 0.35)',
   exit: '#3dff8e',
   exitLocked: '#5a6b62',
   hud: '#10141f',
