@@ -23,11 +23,14 @@ export function createLevelState(levelDef, rng) {
       x: sx + 0.5,
       y: sy + 0.5,
       facing: 0,
-      state: 'patrol', // patrol | chase
+      state: 'patrol', // patrol | chase | investigate
       pauseTimer: 0,
       alert: 0,
       unseenTimer: 0,
       spotted: false, // currently has the player in its cone
+      investigateX: 0, // coin point the guard is walking to, while investigating
+      investigateY: 0,
+      investigateTimer: 0, // seconds left of the investigation detour
     };
   });
   const cameras = levelDef.cameras.map((c) => ({
@@ -56,6 +59,9 @@ export function createLevelState(levelDef, rng) {
     lockdownTimer: 0,
     time: 0,
     score: 0, // loot dollars collected on this level
+    coinsLeft: C.COIN_MAX_PER_JOB, // coin tosses left on this job
+    coinsUsed: 0, // tosses spent on this job (each costs COIN_COST in the tally)
+    coin: null, // the tossed coin, or null: {x, y, fromX, fromY, flightT, landed, ringTimer, distracted}
     particles: [],
     rng,
     over: false,
@@ -77,6 +83,45 @@ function burst(state, x, y, color, count = 10) {
       size: 2 + state.rng() * 2.5,
     });
   }
+}
+
+// Throw a coin: the tool. The coin flies from the thief toward the facing
+// direction and lands on the nearest floor tile 3 (then 2, then 1) tiles
+// ahead — never inside a wall. Costs COIN_COST, at most COIN_MAX_PER_JOB
+// tosses per job. Returns { ok: true } or { ok: false, reason }.
+export function throwCoin(state, events) {
+  if (state.over) return { ok: false, reason: 'over' };
+  if (state.coinsLeft <= 0) return { ok: false, reason: 'empty' };
+  const player = state.player;
+  const dx = player.dirX;
+  const dy = player.dirY;
+  let land = null;
+  for (const d of [C.COIN_THROW_RANGE, C.COIN_THROW_RANGE - 1, 1]) {
+    const tx = Math.floor(player.x + dx * d);
+    const ty = Math.floor(player.y + dy * d);
+    if (!isWall(state.grid, tx, ty)) {
+      land = { x: tx + 0.5, y: ty + 0.5 };
+      break;
+    }
+  }
+  if (!land) return { ok: false, reason: 'blocked' };
+  state.coinsLeft -= 1;
+  state.coinsUsed += 1;
+  state.coin = {
+    x: player.x,
+    y: player.y,
+    fromX: player.x,
+    fromY: player.y,
+    toX: land.x,
+    toY: land.y,
+    flightT: 0,
+    landed: false,
+    ringTimer: C.COIN_RING_SECONDS,
+    distracted: false,
+  };
+  burst(state, player.x, player.y, C.COLORS.coin, 5);
+  events.push({ type: 'coin', x: land.x, y: land.y, cost: C.COIN_COST, left: state.coinsLeft });
+  return { ok: true };
 }
 
 // Move a circle (x, y, radius) through the grid, axis by axis so it slides
@@ -138,6 +183,51 @@ export function updateLevel(state, input, dt, events) {
   }
   player.sneaking = input.sneaking;
 
+  // --- the tossed coin: flight, landing clink, ringing ---
+  const coin = state.coin;
+  if (coin) {
+    if (!coin.landed) {
+      coin.flightT += dt / C.COIN_FLIGHT_SECONDS;
+      if (coin.flightT >= 1) {
+        coin.flightT = 1;
+        coin.landed = true;
+        coin.x = coin.toX;
+        coin.y = coin.toY;
+        burst(state, coin.x, coin.y, C.COLORS.coin, 8);
+        // The clink: the nearest patrolling guard within earshot walks over
+        // to investigate the landing point. Chasing guards ignore it — they
+        // already know where the thief is.
+        if (!coin.distracted) {
+          coin.distracted = true;
+          let best = null;
+          let bestDist = C.COIN_HEAR_RANGE;
+          for (const guard of state.guards) {
+            if (guard.state !== 'patrol') continue;
+            const d = Math.hypot(guard.x - coin.x, guard.y - coin.y);
+            if (d < bestDist) {
+              bestDist = d;
+              best = guard;
+            }
+          }
+          if (best) {
+            best.state = 'investigate';
+            best.investigateX = coin.x;
+            best.investigateY = coin.y;
+            best.investigateTimer = C.COIN_INVESTIGATE_SECONDS;
+            best.pauseTimer = 0;
+            events.push({ type: 'distracted', x: coin.x, y: coin.y });
+          }
+        }
+      } else {
+        coin.x = coin.fromX + (coin.toX - coin.fromX) * coin.flightT;
+        coin.y = coin.fromY + (coin.toY - coin.fromY) * coin.flightT;
+      }
+    } else {
+      coin.ringTimer -= dt;
+      if (coin.ringTimer <= 0) state.coin = null;
+    }
+  }
+
   // --- cameras sweep and watch ---
   let cameraSees = false;
   for (const cam of state.cameras) {
@@ -196,6 +286,30 @@ export function updateLevel(state, input, dt, events) {
         state.over = true;
         events.push({ type: 'caught' });
         return;
+      }
+    } else if (guard.state === 'investigate') {
+      // Investigation: walk to the coin point, look around for the source of
+      // the noise, then go back on patrol. The detour is time-boxed, so the
+      // guard can never get stuck on it.
+      guard.investigateTimer -= dt;
+      const dx = guard.investigateX - guard.x;
+      const dy = guard.investigateY - guard.y;
+      const dist = Math.hypot(dx, dy);
+      if (guard.investigateTimer <= 0) {
+        guard.state = 'patrol';
+      } else if (dist < 0.12) {
+        // At the coin: scan the room for whoever dropped it.
+        guard.facing += dt * 1.4;
+      } else {
+        guard.facing = Math.atan2(dy, dx);
+        const moved = moveCircle(
+          state.grid, guard.x, guard.y,
+          (dx / dist) * C.GUARD_PATROL_SPEED * dt,
+          (dy / dist) * C.GUARD_PATROL_SPEED * dt,
+          C.GUARD_RADIUS,
+        );
+        guard.x = moved.x;
+        guard.y = moved.y;
       }
     } else {
       // Patrol: walk to the current waypoint, pause, then take the next one.
@@ -294,16 +408,18 @@ export function updateLevel(state, input, dt, events) {
 }
 
 // Level score: loot dollars + a time bonus against par + a stealth bonus
-// for keeping the peak alarm low.
+// for keeping the peak alarm low, minus the coin tosses spent (the tool's cost).
 export function levelScoreBreakdown(levelState) {
   const par = levelState.def.parSeconds;
   const timeBonus = Math.max(0, Math.round((par - levelState.time) * 10));
   const stealthBonus = Math.max(0, Math.round((100 - levelState.peakAlarm) * 20));
+  const coinCost = levelState.coinsUsed * C.COIN_COST;
   return {
     loot: levelState.score,
     timeBonus,
     stealthBonus,
-    total: levelState.score + timeBonus + stealthBonus,
+    coinCost,
+    total: levelState.score + timeBonus + stealthBonus - coinCost,
   };
 }
 

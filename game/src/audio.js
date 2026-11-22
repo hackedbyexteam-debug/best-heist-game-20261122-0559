@@ -88,6 +88,13 @@ export function playVictory() {
   );
 }
 
+export function playCoin() {
+  // A bright metallic tink, then a softer ring as the coin lands.
+  tone({ freq: 2093, duration: 0.06, type: 'triangle', volume: 0.12 });
+  tone({ freq: 2637, duration: 0.1, type: 'triangle', volume: 0.09, delay: 0.05 });
+  tone({ freq: 1568, duration: 0.16, type: 'sine', volume: 0.06, delay: 0.16 });
+}
+
 export function playClick() {
   tone({ freq: 1200, duration: 0.04, type: 'square', volume: 0.05 });
 }

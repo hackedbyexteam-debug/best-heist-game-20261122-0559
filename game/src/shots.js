@@ -31,8 +31,20 @@ export function applyShot(app) {
     hud.alarmLabel.textContent = 'ALARM 0%';
     hud.alarmLabel.style.color = '#3dff8e';
     hud.lives.textContent = 'LIVES ●●●';
+    hud.coins.textContent = 'COINS ●●●';
     hud.timer.textContent = '6:24';
     hud.objective.textContent = 'All three vaults cracked — clean getaway!';
+    return true;
+  }
+
+  // The coin-toss scene: the thief just threw a coin, it is ringing on the
+  // floor, and the nearest guard is walking over to investigate it.
+  if (shot === 'coin') {
+    const levelIndex = 1; // The Bank
+    const state = createLevelState(LEVELS[levelIndex], mulberry32(0xC0FFEE + levelIndex * 7919));
+    stageCoin(state);
+    Render.drawGame(ctx, state);
+    fillGameHUD(hud, state, levelIndex, 9600, '1:12');
     return true;
   }
 
@@ -48,26 +60,29 @@ export function applyShot(app) {
   app.levelIndex = levelIndex;
   app.totalScore = levelIndex === 2 ? 18400 : 9600;
   app.lives = 3;
-  if (typeof updateHUD === 'function') {
-    // updateHUD reads the module state of main.js, so mirror the staged values
-    // through the HUD directly instead.
-    hud.level.textContent = `JOB ${levelIndex + 1}/3 — ${LEVELS[levelIndex].name.toUpperCase()}`;
-    hud.score.textContent = `$${(app.totalScore + state.score).toLocaleString('en-US')}`;
-    const lootTotal = state.loot.length;
-    const lootGot = state.loot.filter((item) => item.taken).length + (state.vault.taken ? 1 : 0);
-    hud.loot.textContent = `LOOT ${lootGot}/${lootTotal + 1}`;
-    const alarm = Math.round(state.alarm);
-    hud.alarmFill.style.width = `${alarm}%`;
-    hud.alarmFill.style.background = alarm >= 70 ? '#ff5040' : alarm >= 35 ? '#ffd24d' : '#3dff8e';
-    hud.alarmLabel.textContent = `ALARM ${alarm}%`;
-    hud.alarmLabel.style.color = alarm >= 35 ? '#ffd24d' : '#3dff8e';
-    hud.lives.textContent = 'LIVES ●●●';
-    hud.timer.textContent = levelIndex === 2 ? '2:41' : '1:12';
-    hud.objective.textContent = state.vault.taken
-      ? 'Vault cracked! Reach the green EXIT — now!'
-      : 'Objective: crack the VAULT, grab the loot, reach the EXIT.';
-  }
+  fillGameHUD(hud, state, levelIndex, app.totalScore, levelIndex === 2 ? '2:41' : '1:12');
   return true;
+}
+
+// Fill the DOM HUD from a staged state, so the alarm meter, score, loot and
+// coin counter read in the screenshot too.
+function fillGameHUD(hud, state, levelIndex, totalScore, timerText) {
+  hud.level.textContent = `JOB ${levelIndex + 1}/3 — ${LEVELS[levelIndex].name.toUpperCase()}`;
+  hud.score.textContent = `$${(totalScore + state.score).toLocaleString('en-US')}`;
+  const lootTotal = state.loot.length;
+  const lootGot = state.loot.filter((item) => item.taken).length + (state.vault.taken ? 1 : 0);
+  hud.loot.textContent = `LOOT ${lootGot}/${lootTotal + 1}`;
+  hud.coins.textContent = `COINS ${'●'.repeat(Math.max(0, state.coinsLeft))}${'○'.repeat(Math.max(0, 3 - state.coinsLeft))}`;
+  const alarm = Math.round(state.alarm);
+  hud.alarmFill.style.width = `${alarm}%`;
+  hud.alarmFill.style.background = alarm >= 70 ? '#ff5040' : alarm >= 35 ? '#ffd24d' : '#3dff8e';
+  hud.alarmLabel.textContent = `ALARM ${alarm}%`;
+  hud.alarmLabel.style.color = alarm >= 35 ? '#ffd24d' : '#3dff8e';
+  hud.lives.textContent = 'LIVES ●●●';
+  hud.timer.textContent = timerText;
+  hud.objective.textContent = state.vault.taken
+    ? 'Vault cracked! Reach the green EXIT — now!'
+    : 'Objective: crack the VAULT, grab the loot, reach the EXIT.';
 }
 
 // Pose one frozen moment of a heist: the thief mid-room, one guard turning
@@ -128,4 +143,37 @@ function stageHeist(state, levelIndex) {
     state.cameras[1].angle = -0.4;
     state.cameras[2].angle = Math.PI + 0.35;
   }
+}
+
+// Pose the coin-toss moment (the Bank): the thief just threw a coin three
+// tiles ahead, it is still ringing on the floor, and the nearest guard is
+// walking over to investigate it while the other guards keep patrolling.
+function stageCoin(state) {
+  state.player.x = 13.5;
+  state.player.y = 8.5;
+  state.player.dirX = 1;
+  state.player.dirY = 0;
+  state.player.sneaking = true;
+  state.loot[0].taken = true;
+  state.loot[1].taken = true;
+  state.score = 1500;
+  state.alarm = 38;
+  state.peakAlarm = 38;
+  state.time = 72;
+  state.coinsLeft = 2; // one toss spent, two left — the HUD shows COINS ●●○
+  state.coinsUsed = 1;
+  state.coin = {
+    x: 16.5, y: 8.5, fromX: 13.5, fromY: 8.5,
+    flightT: 1, landed: true, ringTimer: 2.5, distracted: true,
+  };
+  const g0 = state.guards[0];
+  g0.x = 15.2; g0.y = 8.5; g0.facing = 0; g0.alert = 0.15;
+  g0.state = 'investigate'; g0.investigateX = 16.5; g0.investigateY = 8.5; g0.investigateTimer = 3.5;
+  const g1 = state.guards[1];
+  g1.x = 20.5; g1.y = 15.5; g1.facing = Math.PI; g1.alert = 0.1;
+  const g2 = state.guards[2];
+  g2.x = 15.5; g2.y = 11.5; g2.facing = -Math.PI / 2; g2.alert = 0;
+  state.cameras[0].angle = Math.PI / 2 - 0.5;
+  state.cameras[1].angle = -0.4;
+  state.cameras[2].angle = Math.PI + 0.35;
 }

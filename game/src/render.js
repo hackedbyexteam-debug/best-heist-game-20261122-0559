@@ -177,6 +177,46 @@ function drawLoot(ctx, state) {
   }
 }
 
+function drawCoin(ctx, state) {
+  const coin = state.coin;
+  if (!coin) return;
+  // Mid-flight the coin arcs toward its landing tile; once landed it sits
+  // there ringing — an expanding faint circle marks the sound.
+  const arc = coin.landed ? 0 : Math.sin(Math.min(1, coin.flightT) * Math.PI) * 10;
+  const px = tileToPx(coin.x);
+  const py = tileToPx(coin.y) - arc;
+  if (coin.landed) {
+    const ringAge = C.COIN_RING_SECONDS - coin.ringTimer;
+    const pulse = 0.5 + 0.5 * Math.sin(ringAge * 6);
+    ctx.save();
+    ctx.strokeStyle = `rgba(255, 210, 77, ${0.35 * (1 - ringAge / C.COIN_RING_SECONDS) + 0.1})`;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(px, py, 8 + ringAge * 3 + pulse * 2, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
+  ctx.save();
+  ctx.translate(px, py);
+  ctx.fillStyle = 'rgba(255, 210, 77, 0.3)';
+  ctx.beginPath();
+  ctx.arc(0, 0, 9, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = C.COLORS.coin;
+  ctx.beginPath();
+  ctx.arc(0, 0, 6, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = '#a87e10';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+  ctx.fillStyle = '#7a5c0d';
+  ctx.font = 'bold 8px system-ui, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('$', 0, 0.5);
+  ctx.restore();
+}
+
 function drawCameras(ctx, state) {
   for (const cam of state.cameras) {
     drawCone(
@@ -239,9 +279,12 @@ function drawGuards(ctx, state) {
     ctx.arc(2, 4, 1.8, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
-    // Alert marker
+    // Alert marker: '!' while chasing, '?' while suspicious — or while
+    // walking over to investigate a tossed coin.
     if (chasing) {
       drawMarker(ctx, px, py - 24, '!', '#ff5040');
+    } else if (guard.state === 'investigate') {
+      drawMarker(ctx, px, py - 24, '?', '#ffd65a');
     } else if (guard.alert > 0.3) {
       drawMarker(ctx, px, py - 24, '?', '#ffd65a');
     }
@@ -336,6 +379,7 @@ export function drawGame(ctx, state) {
   drawExit(ctx, state);
   drawVault(ctx, state);
   drawLoot(ctx, state);
+  drawCoin(ctx, state);
   drawCameras(ctx, state);
   drawGuards(ctx, state);
   drawPlayer(ctx, state);
@@ -406,7 +450,8 @@ export function drawTitle(ctx, bestScore) {
   ctx.fillStyle = '#e8e6df';
   ctx.font = 'bold 17px system-ui, sans-serif';
   ctx.fillText('WASD / Arrows — move      Shift — sneak      Click — walk there', C.VIEW_W / 2, 330);
-  ctx.fillText('M — mute      P — pause      R — restart level', C.VIEW_W / 2, 358);
+  ctx.fillText('Q — toss a coin: the nearest guard goes to investigate ($250, 3 per job)', C.VIEW_W / 2, 358);
+  ctx.fillText('M — mute      P — pause      R — restart level', C.VIEW_W / 2, 386);
   ctx.fillStyle = '#ffd24d';
   ctx.font = 'bold 24px system-ui, sans-serif';
   const blink = 0.65 + 0.35 * Math.sin(performance.now() / 350);
@@ -422,12 +467,18 @@ export function drawTitle(ctx, bestScore) {
 }
 
 export function drawLevelComplete(ctx, levelName, breakdown, levelIndex, totalLevels) {
-  panel(ctx, 'JOB DONE', [
+  const lines = [
     `${levelName} — vault cracked and clean getaway.`,
     `Loot  $${breakdown.loot.toLocaleString('en-US')}    Time bonus  $${breakdown.timeBonus.toLocaleString('en-US')}    Stealth bonus  $${breakdown.stealthBonus.toLocaleString('en-US')}`,
+  ];
+  if (breakdown.coinCost > 0) {
+    lines.push(`Coin tosses  −$${breakdown.coinCost.toLocaleString('en-US')}`);
+  }
+  lines.push(
     `Level score: $${breakdown.total.toLocaleString('en-US')}`,
     levelIndex + 1 < totalLevels ? 'Press ENTER for the next job.' : 'Press ENTER for the final tally.',
-  ], '#3dff8e');
+  );
+  panel(ctx, 'JOB DONE', lines, '#3dff8e');
 }
 
 export function drawGameOver(ctx, totalScore, levelName) {
@@ -439,11 +490,15 @@ export function drawGameOver(ctx, totalScore, levelName) {
 }
 
 export function drawVictory(ctx, totalScore, breakdown) {
-  panel(ctx, 'CLEAN GETAWAY', [
+  const lines = [
     'All three vaults cracked. The crew vanishes into the night.',
     `Final take: $${totalScore.toLocaleString('en-US')}   (loot $${breakdown.loot.toLocaleString('en-US')} + bonuses $${(breakdown.timeBonus + breakdown.stealthBonus).toLocaleString('en-US')})`,
-    'Press ENTER to run it all again.',
-  ], '#ffd24d');
+  ];
+  if (breakdown.coinCost > 0) {
+    lines.push(`Coin tosses cost $${breakdown.coinCost.toLocaleString('en-US')} — already taken out of the final take.`);
+  }
+  lines.push('Press ENTER to run it all again.');
+  panel(ctx, 'CLEAN GETAWAY', lines, '#ffd24d');
 }
 
 export function drawPaused(ctx) {

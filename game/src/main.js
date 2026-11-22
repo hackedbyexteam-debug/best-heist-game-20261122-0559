@@ -3,7 +3,7 @@
 
 import * as C from './config.js';
 import { LEVELS } from './levels.js';
-import { createLevelState, updateLevel, levelScoreBreakdown } from './engine.js';
+import { createLevelState, updateLevel, levelScoreBreakdown, throwCoin } from './engine.js';
 import { Input } from './input.js';
 import * as Render from './render.js';
 import * as Audio from './audio.js';
@@ -17,6 +17,7 @@ const hud = {
   level: document.getElementById('hud-level'),
   score: document.getElementById('hud-score'),
   loot: document.getElementById('hud-loot'),
+  coins: document.getElementById('hud-coins'),
   alarmFill: document.getElementById('hud-alarm-fill'),
   alarmLabel: document.getElementById('hud-alarm-label'),
   lives: document.getElementById('hud-lives'),
@@ -37,6 +38,7 @@ let levelState = null;
 let totalScore = 0;
 let totalLoot = 0;
 let totalBonuses = 0;
+let totalCoinCost = 0; // coin tosses spent across the run, in score dollars
 let lives = C.STARTING_LIVES;
 let lastBreakdown = null;
 let toastTimer = null;
@@ -87,6 +89,7 @@ function startGame() {
   totalScore = 0;
   totalLoot = 0;
   totalBonuses = 0;
+  totalCoinCost = 0;
   lives = C.STARTING_LIVES;
   loadLevel(0);
   screen = 'playing';
@@ -105,6 +108,13 @@ function handleEngineEvent(event) {
     case 'pickup':
       Audio.playPickup(event.kind);
       showToast(`${event.kind.toUpperCase()} grabbed — +${money(event.value)}`, 1400);
+      break;
+    case 'coin':
+      Audio.playCoin();
+      showToast(`Coin tossed — −${money(event.cost)} (${event.left} left this job)`, 1800);
+      break;
+    case 'distracted':
+      showToast('A guard heard the coin — he is going to look!', 2200);
       break;
     case 'vault':
       Audio.playVault();
@@ -147,6 +157,7 @@ function handleEngineEvent(event) {
       totalScore += lastBreakdown.total;
       totalLoot += lastBreakdown.loot;
       totalBonuses += lastBreakdown.timeBonus + lastBreakdown.stealthBonus;
+      totalCoinCost += lastBreakdown.coinCost;
       if (levelIndex + 1 >= LEVELS.length) {
         screen = 'victory';
         Audio.playVictory();
@@ -168,6 +179,7 @@ function updateHUD() {
   const lootTotal = levelState.loot.length;
   const lootGot = levelState.loot.filter((item) => item.taken).length + (levelState.vault.taken ? 1 : 0);
   hud.loot.textContent = `LOOT ${lootGot}/${lootTotal + 1}`;
+  hud.coins.textContent = `COINS ${'●'.repeat(Math.max(0, levelState.coinsLeft))}${'○'.repeat(Math.max(0, C.COIN_MAX_PER_JOB - levelState.coinsLeft))}`;
   const alarm = Math.round(levelState.alarm);
   hud.alarmFill.style.width = `${alarm}%`;
   hud.alarmFill.style.background = alarm >= 70 ? '#ff5040' : alarm >= 35 ? '#ffd24d' : '#3dff8e';
@@ -204,7 +216,7 @@ function frame(time) {
   }
   if (screen === 'victory') {
     Render.drawGame(ctx, levelState);
-    Render.drawVictory(ctx, totalScore, { loot: totalLoot, timeBonus: totalBonuses, stealthBonus: 0 });
+    Render.drawVictory(ctx, totalScore, { loot: totalLoot, timeBonus: totalBonuses, stealthBonus: 0, coinCost: totalCoinCost });
     return;
   }
 
@@ -248,6 +260,7 @@ function advance() {
     totalScore = 0;
     totalLoot = 0;
     totalBonuses = 0;
+    totalCoinCost = 0;
     loadLevel(levelIndex);
     screen = 'playing';
   } else if (screen === 'victory') {
@@ -267,6 +280,17 @@ input.onPress((key) => {
     else if (screen === 'paused') screen = 'playing';
   } else if (key === 'r') {
     if (screen === 'playing' || screen === 'paused') restartLevel();
+  } else if (key === 'q') {
+    // The coin toss tool: costs score, at most 3 per job.
+    if (screen === 'playing' && levelState) {
+      const events = [];
+      const result = throwCoin(levelState, events);
+      if (!result.ok) {
+        if (result.reason === 'empty') showToast('No coins left this job — make them count!', 1800);
+        else if (result.reason === 'blocked') showToast('No room to toss a coin here.', 1800);
+      }
+      events.forEach(handleEngineEvent);
+    }
   }
 });
 
