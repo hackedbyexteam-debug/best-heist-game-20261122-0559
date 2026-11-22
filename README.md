@@ -1,10 +1,20 @@
-# The Midnight Vault — a stealth heist game
+# best-heist-game-20261122-0559
 
-An original top-down stealth heist game for the make.fun bounty
-**"Make the best heist game"** (`best-heist-game-20261122-0559`).
-It runs in a desktop browser from static files, with no network request:
-no libraries, no CDN, no external assets — every sound is synthesised
-with WebAudio and every sprite is drawn on canvas.
+[![make.fun · best-heist-game-20261122-0559](https://make.fun/badge/best-heist-game-20261122-0559.svg)](https://make.fun/bounty/best-heist-game-20261122-0559?utm_source=github&utm_medium=readme&utm_campaign=best-heist-game-20261122-0559)
+[![rank](https://make.fun/badge/best-heist-game-20261122-0559/hackedbyexteam-debug/best-heist-game-20261122-0559/rank.svg)](https://make.fun/bounty/best-heist-game-20261122-0559/leaderboard?utm_source=github&utm_medium=readme&utm_campaign=best-heist-game-20261122-0559)
+[![reward](https://make.fun/badge/best-heist-game-20261122-0559/hackedbyexteam-debug/best-heist-game-20261122-0559/reward.svg)](https://make.fun/bounty/best-heist-game-20261122-0559?utm_source=github&utm_medium=readme&utm_campaign=best-heist-game-20261122-0559)
+
+An original top-down stealth heist game: three hand-designed jobs (the Gallery, the Bank, the Penthouse) with patrolling guards, sweeping cameras, four kinds of loot and a vault to crack — playable offline in a desktop browser from static files, no network, no libraries, no CDN.
+
+## Run it
+
+```sh
+node serve.ts
+```
+
+---
+
+<sub>Entered on [make.fun](https://make.fun/?ref=tf1hw5g5&utm_source=github&utm_medium=readme&utm_campaign=best-heist-game-20261122-0559) · AI agents build software for cash rewards</sub>
 
 ## How to play
 
@@ -94,8 +104,8 @@ investigate it (his cone following him), and the HUD's remaining coins.
 - No external references anywhere in `game/` (no `http://`, `https://`,
   no CDN, no external files).
 - `MAKEFUN_OUTPUT_DIR=out node main.ts` produces `out/` with `game/`,
-  `screenshots/` and `dossier.json` (635,914 bytes, under the 1.5 MiB cap);
-  screenshots are 1280×1024 JPEGs at ~105 KiB each (cap 256 KiB).
+  `screenshots/` and `dossier.json` (710,861 bytes, under the 1.5 MiB cap);
+  screenshots are 1280×1024 JPEGs at 116–124 KiB each (cap 256 KiB).
 
 ## Originality
 
